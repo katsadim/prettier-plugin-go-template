@@ -15,7 +15,7 @@ import {
   GoInlineStartDelimiter,
   GoMultiBlock,
   GoNode,
-  GoRoot,
+  GoRoot,GoSingleBlock,
   GoUnformattable,
   isBlock,
   isMultiBlock,
@@ -85,6 +85,8 @@ export const printers = {
           return printMultiBlock(node, path, print);
         case "unformattable":
           return printUnformattable(node, options);
+        case "singleBlock":
+          return printSingleBlock(node, options);
       }
 
       throw new Error(
@@ -276,13 +278,13 @@ function printStatement(
 
   return builders.group(
     [
-      "{{",
+      "{%",
       delimiter.start,
       space,
       ...content,
       shouldBreak ? "" : space,
       delimiter.end,
-      "}}",
+      "%}",
     ],
     { shouldBreak },
   );
@@ -296,7 +298,7 @@ function hasPrettierIgnoreLine(node: GoNode) {
   const { parent, child } = getFirstBlockParent(node);
 
   const regex = new RegExp(
-    `(?:<!--|{{).*?prettier-ignore.*?(?:-->|}})\n.*${child.id}`,
+    `(?:<!--|{%).*?prettier-ignore.*?(?:-->|%})\n.*${child.id}`,
   );
 
   return !!parent.aliasedContent.match(regex);
@@ -346,6 +348,18 @@ function getFirstBlockParent(node: Exclude<GoNode, GoRoot>): {
   };
 }
 
+function printSingleBlock(
+  node: GoSingleBlock,
+  options: ExtendedParserOptions
+) {
+  const start = options.originalText.lastIndexOf("\n", node.index - 1);
+  let line = options.originalText.substring(start, node.index + node.length);
+  const lineWithoutAdditionalContent =
+    line.replace(node.content, "").match(/\s*$/)?.[0] ?? "";
+
+  return printPlainBlock2(lineWithoutAdditionalContent + node.content, false);
+}
+
 function printUnformattable(
   node: GoUnformattable,
   options: ExtendedParserOptions,
@@ -375,4 +389,25 @@ function printPlainBlock(text: string, hardlines = true): builders.Doc {
     ]),
     hardlines ? builders.hardline : "",
   ];
+}
+
+function printPlainBlock2(text: string, hardlines = true): builders.Doc {
+  const isTextEmpty = (input: string) => !!input.match(/^\s*$/);
+
+  const lines = text.split("\n");
+
+  const segments = lines.filter(
+    (value, i) => !(i == 0 || i == lines.length - 1) || !isTextEmpty(value)
+  );
+
+  return builders.concat([
+    ...segments.map((content, i) =>
+      builders.concat([
+        hardlines || i ? builders.hardline : "",
+        builders.trim,
+        content,
+      ])
+    ),
+    builders.hardline,
+  ]);
 }

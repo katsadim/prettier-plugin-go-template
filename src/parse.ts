@@ -3,7 +3,7 @@ import { createIdGenerator } from "./create-id-generator";
 
 export const parseGoTemplate: Parser<GoNode>["parse"] = (text, options) => {
   const regex =
-    /{{(?<startdelimiter>-|<|%|\/\*)?\s*(?<statement>(?<keyword>if|range|block|with|define|end|else|prettier-ignore-start|prettier-ignore-end)?[\s\S]*?)\s*(?<endDelimiter>-|>|%|\*\/)?}}|(?<unformattableScript><(script)((?!<)[\s\S])*>((?!<\/script)[\s\S])*?{{[\s\S]*?<\/(script)>)|(?<unformattableStyle><(style)((?!<)[\s\S])*>((?!<\/style)[\s\S])*?{{[\s\S]*?<\/(style)>)/g;
+    /{%(?<startdelimiter>-|<|%|\/\*)?\s*(?<statement>(?<keyword>if|range|block|with|define|endif|else|prettier-ignore-start|prettier-ignore-end)?[\s\S]*?)\s*(?<endDelimiter>-|>|%|\*\/)?%}|(?<unformattableScript><(script)((?!<)[\s\S])*>((?!<\/script)[\s\S])*?{%[\s\S]*?<\/(script)>)|(?<unformattableStyle><(style)((?!<)[\s\S])*>((?!<\/style)[\s\S])*?{%[\s\S]*?<\/(style)>)/g;
   const root: GoRoot = {
     type: "root",
     content: text,
@@ -27,6 +27,8 @@ export const parseGoTemplate: Parser<GoNode>["parse"] = (text, options) => {
       "") as GoInlineStartDelimiter;
     const endDelimiter = (match.groups?.endDelimiter ??
       "") as GoInlineEndDelimiter;
+    const singleBlock = match.groups?.singleBlock as GoSingleBlock | undefined
+
 
     if (current === undefined) {
       throw Error("Node stack empty.");
@@ -43,6 +45,20 @@ export const parseGoTemplate: Parser<GoNode>["parse"] = (text, options) => {
         index: match.index,
         length: match[0].length,
         content: unformattable,
+        parent: current,
+      };
+      continue;
+    }
+
+    if (singleBlock) {
+      current.children[id] = {
+        id,
+        type: "singleBlock",
+        index: match.index,
+        length: match[0].length,
+        content: match[0],
+        startDelimiter,
+        endDelimiter,
         parent: current,
       };
       continue;
@@ -189,7 +205,9 @@ export type GoNode =
   | GoBlock
   | GoInline
   | GoMultiBlock
-  | GoUnformattable;
+  | GoUnformattable
+  | GoSingleBlock;
+
 
 export type GoBlockKeyword =
   | "if"
@@ -200,6 +218,8 @@ export type GoBlockKeyword =
   | "else"
   | "prettier-ignore-start"
   | "prettier-ignore-end"
+  | "endcollapsespace"
+  | "endfunc"
   | "end";
 
 export type GoRoot = { type: "root" } & Omit<
@@ -245,6 +265,10 @@ export type GoInlineStartDelimiter = "<" | "/*" | GoSharedDelimiter;
 export type GoInlineEndDelimiter = ">" | "*/" | GoSharedDelimiter;
 
 export interface GoUnformattable extends GoBaseNode<"unformattable"> {
+  content: string;
+}
+
+export interface GoSingleBlock extends GoBaseNode<"singleBlock">, WithDelimiter {
   content: string;
 }
 
